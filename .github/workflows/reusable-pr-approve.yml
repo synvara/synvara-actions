@@ -9,9 +9,9 @@ on:
         type: number
       # Add other inputs if needed (e.g., commit SHA)
     secrets:
-      APP_ID:
+      APP-ID:
         required: true
-      PRIVATE_KEY:
+      PRIVATE-KEY:
         required: true
 
 jobs:
