@@ -1,0 +1,38 @@
+# synvara-actions/.github/workflows/reusable-pr-approve.yml
+name: Reusable PR Approve Bot
+
+on:
+  workflow_call: # Makes this workflow reusable
+    inputs:
+      pr_number:
+        required: true
+        type: number
+      # Add other inputs if needed (e.g., commit SHA)
+    secrets:
+      APP_ID:
+        required: true
+      PRIVATE_KEY:
+        required: true
+
+jobs:
+  approve:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate GitHub App Token
+        id: generate_token
+        uses: actions/create-github-app-token@v1
+        with:
+          app_id: ${{ secrets.APP_ID }}
+          private_key: ${{ secrets.PRIVATE_KEY }}
+
+      - name: Approve Pull Request (Conditional Logic)
+        env:
+          GH_TOKEN: ${{ steps.generate_token.outputs.token }}
+          PR_NUMBER: ${{ inputs.pr_number }}
+          REPO_FULL_NAME: ${{ github.repository }} # Gets repo where caller workflow runs
+        run: |
+          echo "Checking conditions for PR #${PR_NUMBER} in ${REPO_FULL_NAME}"
+          # --- ADD YOUR LOGIC HERE to decide if approval should happen ---
+          # If conditions met, call the API:
+          # curl ... (using GH_TOKEN, REPO_FULL_NAME, PR_NUMBER) ...
+          echo "Approval logic complete."
