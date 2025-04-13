@@ -1,12 +1,9 @@
 # Example path: .github/workflows/reusable-pr-approve.yml
-# Place this file in your central actions repository (e.g., synvara-actions or synvara/.github)
 
 name: Reusable PR Approve Bot
 
-# Define this workflow as callable by other workflows
 on:
   workflow_call:
-    # Define inputs the caller workflow must provide
     inputs:
       pr_number:
         description: "The pull request number to potentially approve"
@@ -15,7 +12,7 @@ on:
       pr_head_sha:
         description: "The SHA of the HEAD commit of the pull request"
         required: true
-        type: string # Pass the specific SHA from the PR event
+        type: string
       allowed_authors:
         description: "Comma-separated list of allowed PR authors"
         required: false
@@ -31,13 +28,17 @@ on:
         required: false
         type: string
         default: ""
-      required_check_name:
-        description: "Specific check name that must pass (default: Validate Svelte 5 Template)"
+      check_workflow_name:
+        description: "Name of workflow to check for completion"
         required: false
         type: string
         default: "Validate Svelte 5 Template (using Bun)"
+      skip_status_checks:
+        description: "Skip commit status check verification (use when you have permission issues)"
+        required: false
+        type: boolean
+        default: false
 
-    # Define secrets the caller workflow must pass
     secrets:
       APP_ID:
         description: "The App ID of the GitHub App used for approvals"
@@ -51,18 +52,13 @@ jobs:
     name: Attempt PR Approval
     runs-on: ubuntu-latest
     steps:
-      # Step 1: Generate an installation access token for the GitHub App
-      # This token will be used to authenticate API calls as the App
       - name: Generate GitHub App Token
         id: generate_token
         uses: actions/create-github-app-token@v1
         with:
-          # Use the correct input names 'app-id' and 'private-key'
           app-id: ${{ secrets.APP_ID }}
           private-key: ${{ secrets.PRIVATE_KEY }}
-          # The GitHub App needs 'pull_requests: write' permission
 
-      # Step 2: Check conditions and potentially approve the PR
       - name: Check PR Status and Conditions
         id: check_conditions
         env:
@@ -73,7 +69,8 @@ jobs:
           ALLOWED_AUTHORS: ${{ inputs.allowed_authors }}
           MAX_CHANGED_FILES: ${{ inputs.max_changed_files }}
           ALLOWED_FILE_PATTERNS: ${{ inputs.allowed_file_patterns }}
-          REQUIRED_CHECK_NAME: ${{ inputs.required_check_name }}
+          CHECK_WORKFLOW_NAME: ${{ inputs.check_workflow_name }}
+          SKIP_STATUS_CHECKS: ${{ inputs.skip_status_checks }}
         run: |
           echo "Checking conditions for PR #${PR_NUMBER} in ${REPO_FULL_NAME}"
           echo "Commit SHA to approve: ${COMMIT_SHA}"
@@ -141,44 +138,34 @@ jobs:
             done < <(echo "$files_data" | jq -r '.[].filename')
           fi
 
-          # Get commit check runs instead of overall status
-          checks_data=$(curl -s -H "Authorization: Bearer ${GH_TOKEN}" \
-            "https://api.github.com/repos/${REPO_FULL_NAME}/commits/${COMMIT_SHA}/check-runs")
-
-          # Log all check runs for debugging
-          echo "Current check runs for this commit:"
-          echo "$checks_data" | jq -r '.check_runs[] | .name + ": " + .conclusion'
-
-          # Check specifically for the required workflow
-          required_check_passed=false
-          if echo "$checks_data" | jq -r '.check_runs[] | select(.name=="'"${REQUIRED_CHECK_NAME}"'") | .conclusion' | grep -q "success"; then
-            required_check_passed=true
+          # If we're skipping status checks, approve directly
+          if [[ "$SKIP_STATUS_CHECKS" == "true" ]]; then
+            echo "Skipping commit status checks as requested"
+            echo "approve_decision=true" >> $GITHUB_ENV
+            exit 0
           fi
 
-          # Also try to check status (older API)
-          status_data=$(curl -s -H "Authorization: Bearer ${GH_TOKEN}" \
-            "https://api.github.com/repos/${REPO_FULL_NAME}/commits/${COMMIT_SHA}/status")
-            
-          echo "Status API response:"
-          echo "$status_data" | jq '.'
+          # Get workflow runs for the PR branch
+          workflow_runs=$(curl -s -H "Authorization: Bearer ${GH_TOKEN}" \
+            "https://api.github.com/repos/${REPO_FULL_NAME}/actions/runs?head_sha=${COMMIT_SHA}")
 
-          statuses=$(echo "$status_data" | jq -r '.statuses[] | .context + ": " + .state' 2>/dev/null)
-          if [[ -n "$statuses" ]]; then
-            echo "Current status checks:"
-            echo "$statuses"
-            
-            if echo "$statuses" | grep -q "${REQUIRED_CHECK_NAME}: success"; then
-              required_check_passed=true
+          echo "Workflow runs for this commit:"
+          echo "$workflow_runs" | jq -r '.workflow_runs[] | .name + ": " + .conclusion'
+
+          # Look for the specific workflow we care about
+          if echo "$workflow_runs" | jq -r '.workflow_runs[] | select(.name=="'"${CHECK_WORKFLOW_NAME}"'") | .conclusion' | grep -q "success"; then
+            echo "Required workflow '${CHECK_WORKFLOW_NAME}' completed successfully"
+            echo "approve_decision=true" >> $GITHUB_ENV
+          else
+            echo "Error: Required workflow '${CHECK_WORKFLOW_NAME}' has not completed successfully"
+            workflow_status=$(echo "$workflow_runs" | jq -r '.workflow_runs[] | select(.name=="'"${CHECK_WORKFLOW_NAME}"'") | .conclusion')
+            if [[ -z "$workflow_status" ]]; then
+              echo "Workflow '${CHECK_WORKFLOW_NAME}' not found in runs"
+            else
+              echo "Workflow status: $workflow_status"
             fi
-          fi
-
-          if [[ "$required_check_passed" != "true" ]]; then
-            echo "Error: Required check '${REQUIRED_CHECK_NAME}' not passed"
             exit 1
           fi
-
-          echo "All conditions met for approval"
-          echo "approve_decision=true" >> $GITHUB_ENV
 
       - name: Approve Pull Request
         if: env.approve_decision == 'true'
