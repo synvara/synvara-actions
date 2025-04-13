@@ -9,20 +9,20 @@ on:
     # Define inputs the caller workflow must provide
     inputs:
       pr_number:
-        description: 'The pull request number to potentially approve'
+        description: "The pull request number to potentially approve"
         required: true
         type: number
       pr_head_sha:
-        description: 'The SHA of the HEAD commit of the pull request'
+        description: "The SHA of the HEAD commit of the pull request"
         required: true
         type: string # Pass the specific SHA from the PR event
       allowed_authors:
-        description: 'Comma-separated list of allowed PR authors'
+        description: "Comma-separated list of allowed PR authors"
         required: false
         type: string
-        default: ''
+        default: ""
       max_changed_files:
-        description: 'Maximum number of files that can be changed'
+        description: "Maximum number of files that can be changed"
         required: false
         type: number
         default: 100
@@ -30,20 +30,20 @@ on:
         description: 'Comma-separated list of allowed file patterns (e.g., "*.md,*.txt")'
         required: false
         type: string
-        default: ''
+        default: ""
       required_check_name:
-        description: 'Specific check name that must pass (default: Validate Svelte 5 Template)'
+        description: "Specific check name that must pass (default: Validate Svelte 5 Template)"
         required: false
         type: string
-        default: 'Validate Svelte 5 Template (using Bun)'
+        default: "Validate Svelte 5 Template (using Bun)"
 
     # Define secrets the caller workflow must pass
     secrets:
       APP_ID:
-        description: 'The App ID of the GitHub App used for approvals'
+        description: "The App ID of the GitHub App used for approvals"
         required: true
       PRIVATE_KEY:
-        description: 'The Private Key of the GitHub App used for approvals'
+        description: "The Private Key of the GitHub App used for approvals"
         required: true
 
 jobs:
@@ -144,24 +144,24 @@ jobs:
           # Get commit check runs instead of overall status
           checks_data=$(curl -s -H "Authorization: Bearer ${GH_TOKEN}" \
             "https://api.github.com/repos/${REPO_FULL_NAME}/commits/${COMMIT_SHA}/check-runs")
-          
+
           # Log all check runs for debugging
           echo "Current check runs for this commit:"
           echo "$checks_data" | jq -r '.check_runs[] | .name + ": " + .conclusion'
-          
+
           # Check specifically for the required workflow
           required_check_passed=false
           if echo "$checks_data" | jq -r '.check_runs[] | select(.name=="'"${REQUIRED_CHECK_NAME}"'") | .conclusion' | grep -q "success"; then
             required_check_passed=true
           fi
-          
+
           # Also try to check status (older API)
           status_data=$(curl -s -H "Authorization: Bearer ${GH_TOKEN}" \
             "https://api.github.com/repos/${REPO_FULL_NAME}/commits/${COMMIT_SHA}/status")
             
           echo "Status API response:"
           echo "$status_data" | jq '.'
-          
+
           statuses=$(echo "$status_data" | jq -r '.statuses[] | .context + ": " + .state' 2>/dev/null)
           if [[ -n "$statuses" ]]; then
             echo "Current status checks:"
@@ -171,12 +171,12 @@ jobs:
               required_check_passed=true
             fi
           fi
-          
+
           if [[ "$required_check_passed" != "true" ]]; then
             echo "Error: Required check '${REQUIRED_CHECK_NAME}' not passed"
             exit 1
           fi
-          
+
           echo "All conditions met for approval"
           echo "approve_decision=true" >> $GITHUB_ENV
 
@@ -189,7 +189,7 @@ jobs:
           COMMIT_SHA: ${{ inputs.pr_head_sha }}
         run: |
           echo "Attempting to approve PR #${PR_NUMBER}"
-          
+
           response=$(curl -s -w "\n%{http_code}" --request POST \
             --url "https://api.github.com/repos/${REPO_FULL_NAME}/pulls/${PR_NUMBER}/reviews" \
             --header "Authorization: Bearer ${GH_TOKEN}" \
@@ -203,11 +203,11 @@ jobs:
 
           http_code=$(echo "$response" | tail -n1)
           response_body=$(echo "$response" | head -n-1)
-          
+
           echo "API Response Status: ${http_code}"
           echo "API Response Body:"
           echo "$response_body" | jq '.'
-          
+
           if [[ "$http_code" != "200" ]]; then
             echo "Error: API call failed with status ${http_code}"
             exit 1
