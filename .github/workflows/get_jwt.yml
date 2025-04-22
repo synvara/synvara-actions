@@ -1,4 +1,4 @@
-name: Get JWT
+name: Get GitHub OIDC JWT
 
 on:
   workflow_dispatch: # Allows manual triggering of the workflow
@@ -11,37 +11,53 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Authenticate to Google Cloud
-        id: auth
-        uses: "google-github-actions/auth@v2"
-        with:
-          workload_identity_provider: "projects/837411258846/locations/global/workloadIdentityPools/github-pool/providers/github-provider" # Your Provider ID
-          service_account: "github-actions-sa@github-actions-457316.iam.gserviceaccount.com"
-          project_id: "github-actions-457316"
-          create_credentials_file: false # We don't need the credentials file
-          token_format: "id_token" # Request an ID token
-          id_token_audience: "api://github.com" # Audience for the token
-
-      - name: Print JWT (split to avoid masking)
+      - name: Get GitHub OIDC ID Token
+        id: get_id_token
         run: |
-          TOKEN="${{ steps.auth.outputs.id_token }}"
+          ID_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://github.com" | jq -r '.value')
+          echo "::add-mask::$ID_TOKEN"
+          echo "id_token=$ID_TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Print JWT parts (split to avoid masking)
+        run: |
+          TOKEN="${{ steps.get_id_token.outputs.id_token }}"
           echo "JWT Header (decode with base64):"
           echo $TOKEN | cut -d'.' -f1
           echo ""
           echo "JWT Payload (decode with base64):"
           echo $TOKEN | cut -d'.' -f2
           echo ""
-          echo "To decode, go to https://jwt.io/ and paste these parts with the dots between them"
+          echo "To decode, go to https://jwt.io/ and paste the header and payload with dots between them"
 
       - name: Decode JWT
         run: |
-          TOKEN="${{ steps.auth.outputs.id_token }}"
+          TOKEN="${{ steps.get_id_token.outputs.id_token }}"
           HEADER=$(echo ${TOKEN} | cut -d"." -f1)
           PAYLOAD=$(echo ${TOKEN} | cut -d"." -f2)
 
           # Add padding if needed
-          HEADER_PAD=$(echo -n $HEADER | sed 's/=//g' | sed 's/+/-/g' | sed 's/\//_/g')
-          PAYLOAD_PAD=$(echo -n $PAYLOAD | sed 's/=//g' | sed 's/+/-/g' | sed 's/\//_/g')
+          # The sed commands fix potential base64 URL encoding issues
+          HEADER_PAD=$(echo -n $HEADER | sed 's/-/+/g' | sed 's/_/\//g')
+          PAYLOAD_PAD=$(echo -n $PAYLOAD | sed 's/-/+/g' | sed 's/_/\//g')
+
+          # Add padding
+          REMAINDER=$((${#HEADER_PAD} % 4))
+          if [ $REMAINDER -eq 1 ]; then
+            HEADER_PAD="${HEADER_PAD}==="
+          elif [ $REMAINDER -eq 2 ]; then
+            HEADER_PAD="${HEADER_PAD}=="
+          elif [ $REMAINDER -eq 3 ]; then
+            HEADER_PAD="${HEADER_PAD}="
+          fi
+
+          REMAINDER=$((${#PAYLOAD_PAD} % 4))
+          if [ $REMAINDER -eq 1 ]; then
+            PAYLOAD_PAD="${PAYLOAD_PAD}==="
+          elif [ $REMAINDER -eq 2 ]; then
+            PAYLOAD_PAD="${PAYLOAD_PAD}=="
+          elif [ $REMAINDER -eq 3 ]; then
+            PAYLOAD_PAD="${PAYLOAD_PAD}="
+          fi
 
           echo "Header:"
           echo $HEADER_PAD | base64 -d 2>/dev/null || echo $HEADER_PAD | base64 --decode 2>/dev/null
