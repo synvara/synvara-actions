@@ -1,7 +1,7 @@
 name: Get JWT
 
 on:
-  workflow_dispatch:  # Allows manual triggering of the workflow
+  workflow_dispatch: # Allows manual triggering of the workflow
 
 jobs:
   get_jwt:
@@ -19,4 +19,4 @@ jobs:
           id_token_audience: "api://github.com" # Or your Vault audience
 
       - name: Print JWT
-        run: echo "JWT: ${{ steps.auth.outputs.id_token }}"
+        run: 'echo "JWT: ${{ steps.auth.outputs.id_token }}"'
