@@ -11,16 +11,47 @@ jobs:
       contents: read
       id-token: write
     steps:
-      - name: Get GitHub OIDC ID Token
-        id: get_id_token
+      - name: Check environment
         run: |
-          ID_TOKEN=$(curl -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=api://github.com" | jq -r '.value')
-          echo "::add-mask::$ID_TOKEN"
-          echo "id_token=$ID_TOKEN" >> $GITHUB_OUTPUT
+          echo "Checking if required tools are available..."
+          which jq || echo "jq not found"
+          echo "Checking environment variables..."
+          echo "ACTIONS_ID_TOKEN_REQUEST_TOKEN exists: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN != '' }}"
+          echo "ACTIONS_ID_TOKEN_REQUEST_URL exists: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL != '' }}"
+
+      - name: Install jq if needed
+        run: |
+          if ! command -v jq &> /dev/null; then
+            echo "Installing jq..."
+            sudo apt-get update
+            sudo apt-get install -y jq
+          fi
+
+      - name: Get GitHub OIDC token directly
+        id: github_token
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const core = require('@actions/core')
+            const { getIDToken } = require('@actions/core')
+            try {
+              const idToken = await getIDToken('api://github.com')
+              core.setSecret(idToken)
+              core.setOutput('token', idToken)
+              console.log('Successfully retrieved OIDC token')
+              return idToken
+            } catch (error) {
+              core.setFailed(`Failed to get ID token: ${error.message}`)
+            }
 
       - name: Print JWT parts (split to avoid masking)
+        if: steps.github_token.outputs.token != ''
         run: |
-          TOKEN="${{ steps.get_id_token.outputs.id_token }}"
+          TOKEN="${{ steps.github_token.outputs.token }}"
+          if [ -z "$TOKEN" ]; then
+            echo "Error: Token is empty"
+            exit 1
+          fi
           echo "JWT Header (decode with base64):"
           echo $TOKEN | cut -d'.' -f1
           echo ""
@@ -30,12 +61,16 @@ jobs:
           echo "To decode, go to https://jwt.io/ and paste the header and payload with dots between them"
 
       - name: Decode JWT
+        if: steps.github_token.outputs.token != ''
         run: |
-          TOKEN="${{ steps.get_id_token.outputs.id_token }}"
+          TOKEN="${{ steps.github_token.outputs.token }}"
+          if [ -z "$TOKEN" ]; then
+            echo "Error: Token is empty"
+            exit 1
+          fi
           HEADER=$(echo ${TOKEN} | cut -d"." -f1)
           PAYLOAD=$(echo ${TOKEN} | cut -d"." -f2)
 
-          # Add padding if needed
           # The sed commands fix potential base64 URL encoding issues
           HEADER_PAD=$(echo -n $HEADER | sed 's/-/+/g' | sed 's/_/\//g')
           PAYLOAD_PAD=$(echo -n $PAYLOAD | sed 's/-/+/g' | sed 's/_/\//g')
