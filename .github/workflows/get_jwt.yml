@@ -6,6 +6,10 @@ on:
 jobs:
   get_jwt:
     runs-on: ubuntu-latest
+    # Add permissions required for OIDC token generation
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Authenticate to Google Cloud
         id: auth
