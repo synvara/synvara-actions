@@ -8,8 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     # Add permissions required for OIDC token generation
     permissions:
-      contents: read
       id-token: write
+      contents: read
     steps:
       - name: Check environment
         run: |
@@ -33,9 +33,8 @@ jobs:
         with:
           script: |
             const core = require('@actions/core')
-            const { getIDToken } = require('@actions/core')
             try {
-              const idToken = await getIDToken('api://github.com')
+              const idToken = await core.getIDToken('api://github.com')
               core.setSecret(idToken)
               core.setOutput('token', idToken)
               console.log('Successfully retrieved OIDC token')
