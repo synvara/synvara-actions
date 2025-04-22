@@ -32,16 +32,13 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            const core = require('@actions/core')
-            try {
-              const idToken = await core.getIDToken('api://github.com')
-              core.setSecret(idToken)
-              core.setOutput('token', idToken)
-              console.log('Successfully retrieved OIDC token')
-              return idToken
-            } catch (error) {
-              core.setFailed(`Failed to get ID token: ${error.message}`)
-            }
+            const core = require('@actions/core');
+            // Request OIDC ID token from GitHub
+            const idToken = await core.getIDToken('api://github.com');
+            // Mask the token in logs
+            core.setSecret(idToken);
+            // Output the token for use in later steps
+            core.setOutput('token', idToken);
 
       - name: Print JWT parts (split to avoid masking)
         if: steps.github_token.outputs.token != ''
