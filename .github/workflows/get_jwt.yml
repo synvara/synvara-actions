@@ -15,8 +15,8 @@ jobs:
           service_account: "github-actions-sa@github-actions-457316.iam.gserviceaccount.com"
           project_id: "github-actions-457316"
           create_credentials_file: false # We don't need the credentials file
-          generate_id_token: true # Request the JWT
-          id_token_audience: "api://github.com" # Or your Vault audience
+          token_format: "id_token" # Request ID token format
+          id_token_audience: "api://github.com" # The audience for the generated ID token
 
       - name: Print JWT
         run: 'echo "JWT: ${{ steps.auth.outputs.id_token }}"'
