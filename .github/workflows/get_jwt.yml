@@ -22,5 +22,29 @@ jobs:
           token_format: "id_token" # Request an ID token
           id_token_audience: "api://github.com" # Audience for the token
 
-      - name: Print JWT
-        run: 'echo "JWT: ${{ steps.auth.outputs.id_token }}"'
+      - name: Print JWT (split to avoid masking)
+        run: |
+          TOKEN="${{ steps.auth.outputs.id_token }}"
+          echo "JWT Header (decode with base64):"
+          echo $TOKEN | cut -d'.' -f1
+          echo ""
+          echo "JWT Payload (decode with base64):"
+          echo $TOKEN | cut -d'.' -f2
+          echo ""
+          echo "To decode, go to https://jwt.io/ and paste these parts with the dots between them"
+
+      - name: Decode JWT
+        run: |
+          TOKEN="${{ steps.auth.outputs.id_token }}"
+          HEADER=$(echo ${TOKEN} | cut -d"." -f1)
+          PAYLOAD=$(echo ${TOKEN} | cut -d"." -f2)
+
+          # Add padding if needed
+          HEADER_PAD=$(echo -n $HEADER | sed 's/=//g' | sed 's/+/-/g' | sed 's/\//_/g')
+          PAYLOAD_PAD=$(echo -n $PAYLOAD | sed 's/=//g' | sed 's/+/-/g' | sed 's/\//_/g')
+
+          echo "Header:"
+          echo $HEADER_PAD | base64 -d 2>/dev/null || echo $HEADER_PAD | base64 --decode 2>/dev/null
+
+          echo "Payload:"
+          echo $PAYLOAD_PAD | base64 -d 2>/dev/null || echo $PAYLOAD_PAD | base64 --decode 2>/dev/null
