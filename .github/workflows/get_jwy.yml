@@ -1,0 +1,22 @@
+name: Get JWT
+
+on:
+  workflow_dispatch:  # Allows manual triggering of the workflow
+
+jobs:
+  get_jwt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: "google-github-actions/auth@v2"
+        with:
+          workload_identity_provider: "projects/837411258846/locations/global/workloadIdentityPools/github-pool/providers/github-provider" # Your Provider ID
+          service_account: "github-actions-sa@github-actions-457316.iam.gserviceaccount.com"
+          project_id: "github-actions-457316"
+          create_credentials_file: false # We don't need the credentials file
+          generate_id_token: true # Request the JWT
+          id_token_audience: "api://github.com" # Or your Vault audience
+
+      - name: Print JWT
+        run: echo "JWT: ${{ steps.auth.outputs.id_token }}"
