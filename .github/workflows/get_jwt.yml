@@ -31,13 +31,11 @@ jobs:
         id: github_token
         uses: actions/github-script@v6
         with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const core = require('@actions/core');
-            // Request OIDC ID token from GitHub
+            // Use provided `core` object; do not re-import
             const idToken = await core.getIDToken('api://github.com');
-            // Mask the token in logs
             core.setSecret(idToken);
-            // Output the token for use in later steps
             core.setOutput('token', idToken);
 
       - name: Print JWT parts (split to avoid masking)
